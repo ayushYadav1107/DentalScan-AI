@@ -6,7 +6,7 @@ Upload any dental X-ray image and the model will automatically detect and classi
 > 🌐 **Don't want to run it locally?**  
 > The app is hosted online — just open the link below and use it directly in your browser. No installation, no setup required.
 >
-> **👉 [Open DentalScan AI — Live Demo](#)** *(replace `#` with your Streamlit / Hugging Face URL once deployed)*
+> **👉 [Open DentalScan AI — Live Demo](https://dentalscan-ai.streamlit.app/)**
 
 ---
 
