@@ -108,7 +108,7 @@ streamlit
 ultralytics
 Pillow
 numpy
-opencv-python
+opencv-python-headless
 ```
 
 ---
