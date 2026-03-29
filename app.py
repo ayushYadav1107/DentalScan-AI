@@ -1,8 +1,16 @@
-import streamlit as st
-from PIL import Image
-import numpy as np
-import cv2
 import os
+import sys
+try:
+    import cv2
+except ImportError:
+    print("Cloud OpenCV corruption detected. Initiating headless override...")
+    os.system("pip uninstall -y opencv-python opencv-python-headless")
+    os.system("pip install opencv-python-headless")
+    import cv2
+
+import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 import time
 from ultralytics import YOLO
 
