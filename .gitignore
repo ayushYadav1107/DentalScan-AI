@@ -1,0 +1,22 @@
+# Python Virtual Environment
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# IDEs
+.idea/
+.vscode/
+
+# Dataset folders (contains large images/labels not suitable for git)
+dataset/
+
+# Training artifacts & runs
+# We ignore the entire runs directory EXCEPT the final model weights needed for the app
+runs/
+!runs/detect/Yolo_10s_train/weights/best.pt
+
+# Large models/weights just in case
+*.pt
+!runs/detect/Yolo_10s_train/weights/best.pt
