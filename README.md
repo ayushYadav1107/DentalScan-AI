@@ -1,319 +1,316 @@
-# 🦷 DentalScan AI
+# DentalScan AI
 
-**A dental X-ray analysis tool powered by a fine-tuned YOLOv10s model.**  
-Upload any dental X-ray image and the model will automatically detect and classify dental conditions — drawing colour-coded bounding boxes directly on the image with confidence scores.
+Six-class dental condition detection on panoramic radiographs (OPG), with a
+research harness for measuring it honestly.
 
-> 🌐 **Don't want to run it locally?**  
-> The app is hosted online — just open the link below and use it directly in your browser. No installation, no setup required.
->
-> **👉 [Open DentalScan AI — Live Demo](https://dentalscan-ai.streamlit.app/)**
-
----
-
-## 📋 Table of Contents
-
-1. [What This Project Does](#-what-this-project-does)
-2. [Detected Classes](#-detected-classes)
-3. [Project Structure](#-project-structure)
-4. [Requirements](#-requirements)
-5. [Setup & Installation](#-setup--installation)
-6. [Running the Web App](#-running-the-web-app)
-7. [Using the App](#-using-the-app)
-8. [Training the Model (Optional)](#-training-the-model-optional)
-9. [Evaluating the Model (Optional)](#-evaluating-the-model-optional)
-10. [Deploying to the Cloud](#-deploying-to-the-cloud)
-11. [Troubleshooting](#-troubleshooting)
+**[Live demo](https://dentalscan-ai.streamlit.app/)** ·
+**[Technical report (PDF)](report/main.pdf)** ·
+**[Model card](MODEL_CARD.md)**
 
 ---
 
-## 🔍 What This Project Does
+## What is here
 
-DentalScan AI is a **computer vision web application** that analyses dental panoramic or periapical X-ray images. It uses a **YOLOv10s** object detection model that was fine-tuned for 250 epochs on a labelled dental X-ray dataset.
+Two things share this repository:
 
-When you upload an X-ray, the app will:
-- Detect the location of dental abnormalities and regions of interest
-- Draw a colour-coded bounding box around each finding
-- Label each box with the condition name and confidence score
-- Show a summary of total detections, unique classes found, and average confidence
+1. **A working detector and a Streamlit interface.** Upload an OPG, get
+   colour-coded boxes with confidence scores and a saliency overlay showing
+   where the model looked.
+2. **A measurement harness.** Per-class metrics with bootstrap confidence
+   intervals, grouped cross-validation, a declarative multi-seed ablation grid,
+   TIDE-style error decomposition, and saliency maps scored for faithfulness
+   rather than shown as illustrations.
 
-The interface is a **Streamlit web app** — it runs locally in your browser. No internet connection is needed after setup (except for the initial library download).
-
----
-
-## 🦠 Detected Classes
-
-The model is trained to detect **6 dental conditions**, each assigned a unique colour:
-
-| # | Class | Description |
-|---|-------|-------------|
-| 0 | **Caries** | Tooth decay / cavities |
-| 1 | **Infection** | Periapical or periodontal infection |
-| 2 | **Impacted** | Impacted tooth (did not fully erupt) |
-| 3 | **BDC/BDR** | Bone Defect Coronal / Bone Defect Root |
-| 4 | **Fractured** | Cracked or broken tooth |
-| 5 | **Healthy** | Normal, healthy tooth region |
+The second exists because the first was originally reported as a single number,
+`mAP@0.5 = 0.923`, and that number turns out not to be a measurement. The
+[technical report](report/main.pdf) explains why in four pages; the short version
+is below.
 
 ---
 
-## 📁 Project Structure
+## Results
 
-```
-DentalScan AI/
-│
-├── .git/                   ← Git repository tracking
-├── .gitignore              ← Files/folders ignored by Git
-├── app.py                  ← Main Streamlit web app (run this)
-├── model.py                ← Script used to train the YOLOv10s model
-├── evaluate.py             ← Basic YOLO evaluation script
-├── evaluate_new.py         ← Detailed evaluation with per-detection metrics
-├── data.yaml               ← Dataset configuration (class names + paths)
-├── requirements.txt        ← Python dependencies
-├── README.md               ← This file
-│
-├── runs/
-│   ├── detect/             ← Detection training & validation experiment runs
-│   │   ├── Yolo_10s_train/ ← ✅ Main fine-tuned model run (used by the app)
-│   │   │   └── weights/
-│   │   │       ├── best.pt ← Best checkpoint (lowest validation loss)
-│   │   │       └── last.pt ← Last checkpoint
-│   │   ├── Yolo_10s_val/
-│   │   ├── Yolo_12m_250epochs/
-│   │   ├── Yolo_8n_250/
-│   │   └── previous/
-│   └── segment/            ← Segmentation experiment runs (not used by the app)
-│
-└── .venv/                  ← Python virtual environment (created during setup)
-```
+### Per-class AP@0.5, three architectures, identical recipe
 
----
+| Class     | N (val) | YOLOv8n | YOLOv10s  | YOLOv12m  |
+|-----------|--------:|--------:|----------:|----------:|
+| Caries    | 14      | 0.781   | 0.849     | **0.875** |
+| Healthy   | 67      | 0.734   | 0.837     | **0.850** |
+| Impacted  | 18      | 0.978   | **0.995** | **0.995** |
+| Infection | 4 \*    | 0.750   | 0.870     | 0.788     |
+| Fractured | 9 \*    | 0.973   | 0.995     | 0.968     |
+| BDC/BDR   | 3 \*    | 0.671   | 0.995     | 0.995     |
+| **mAP@0.5 — all six classes**   | | 0.815 | **0.923** | 0.912 |
+| **mAP@0.5 — the three with N ≥ 10** | | 0.831 | 0.894 | **0.907** |
 
-## ✅ Requirements
+\* fewer than 10 validation instances. These are arithmetic, not evidence.
 
-### System Requirements
+Two things the aggregate number hid. The classes driving the high mean are
+exactly the three with the least support. And the ranking of the two leading
+architectures **inverts** depending on whether those classes are counted.
 
-| Component | Minimum |
-|-----------|---------|
-| OS | Windows 10/11, macOS, or Linux |
-| Python | **3.10 or later** |
-| RAM | 8 GB |
-| GPU | Optional (NVIDIA CUDA GPU speeds up inference significantly) |
-| Disk space | ~2 GB (model weights + dependencies) |
+### Cost against accuracy
 
-### Python Dependencies
+| Model    | Best epoch | mAP@0.5   | mAP@0.5:0.95 | Training time |
+|----------|-----------:|----------:|-------------:|--------------:|
+| YOLOv8n  | 198        | 0.795     | 0.480        | 30 min        |
+| YOLOv10s | 214        | **0.928** | 0.611        | **72 min**    |
+| YOLOv12m | 240        | 0.909     | **0.625**    | 332 min       |
 
-All dependencies are listed in `requirements.txt`:
+YOLOv12m costs 4.6× YOLOv10s and does not beat it at IoU 0.5. Its edge at
+mAP@0.5:0.95 suggests the extra capacity buys tighter boxes on objects it
+already finds, not more detections — which for a triage tool is the less
+valuable of the two.
 
-```
-streamlit
-ultralytics
-Pillow
-numpy
-opencv-python-headless
-```
+Single runs on one GPU. "Best" is a maximum over epochs on the validation split
+and is optimistically biased; it is not a held-out estimate. That is the next
+thing the harness fixes.
 
----
+### Where the model actually fails
 
-## 🛠 Setup & Installation
+Inter-class confusion accounts for roughly **1%** of predictions. Essentially
+every error is a missed detection or a background false positive:
 
-Follow these steps **exactly once** to set up the project. After this, you only need to do [Step 5](#step-5-activate-the-virtual-environment) onwards each time.
+| Class     | Recall | Support | 95% interval  |
+|-----------|-------:|--------:|---------------|
+| Impacted  | 1.00   | 18/18   | [0.82, 1.00]  |
+| Fractured | 0.89   | 8/9     | [0.56, 0.98]  |
+| Caries    | 0.79   | 11/14   | [0.52, 0.92]  |
+| Healthy   | 0.64   | 43/67   | [0.52, 0.75]  |
+| BDC/BDR   | 1.00   | 3/3     | [0.44, 1.00]  |
+| Infection | 0.50   | 2/4     | [0.15, 0.85]  |
 
-### Step 1 — Clone or download the project
-
-If you have Git installed:
-```bash
-git clone <your-repo-url>
-cd "DentalScan AI"
-```
-
-Or simply download the project as a ZIP and extract it, then open a terminal inside the extracted folder.
+Half of all periapical infections are never proposed at all. 82% of background
+false positives are labelled `Healthy`. The classification head is not the
+bottleneck — given a proposal, the model names it correctly. Proposal recall is.
 
 ---
 
-### Step 2 — Check your Python version
+## The measurement problem
+
+The dataset is 231 annotated radiographs, offline-augmented 3× on the training
+side only:
+
+| Split | Images | Source radiographs | Boxes | Caries | Infection | Impacted | BDC/BDR | Fractured | Healthy |
+|-------|-------:|-------------------:|------:|-------:|----------:|---------:|--------:|----------:|--------:|
+| train | 558    | 186                | 5642  | 853    | 172       | 729      | 69      | 526       | 3293    |
+| val   | 23     | 23                 | 115   | 14     | 4         | 18       | 3       | 9         | 67      |
+| test  | 23     | 23                 | 102   | 26     | 5         | 12       | **0**   | 5         | 54      |
+
+- **No leakage.** Grouping every file by the source radiograph in its filename,
+  the intersection between every pair of splits is empty. Verified, not assumed.
+- **Class imbalance is 48:1** in training (Healthy 3293 vs BDC/BDR 69).
+- **`BDC/BDR` has zero instances in test.** The held-out split cannot score one
+  of the six classes at all.
+- **Three classes have fewer than 10 validation instances.** An AP of 0.995 on
+  three boxes carries a 95% interval on recall of [0.44, 1.00].
+
+The fix is not a better backbone. It is a protocol the data can support: pooled
+**grouped, rarity-aware 5-fold cross-validation** over all 231 radiographs.
+Folds are grouped by source image so augmented copies never straddle a boundary,
+and assigned rarest-class-first so scarce classes stay present everywhere. Result:
+
+| | Current split | 5-fold CV |
+|---|---:|---:|
+| Radiographs used for evaluation | 23 | 231 |
+| `BDC/BDR` evaluation instances | 3 | **72** (10–20 per fold) |
+| Classes scorable on the held-out set | 5 of 6 | **6 of 6** |
+| Trainings required | 1 | 5 |
+
+---
+
+## Reproducing everything
 
 ```bash
-python --version
+pip install -r requirements-research.txt
+
+# ── dataset.py ── find it, audit it, split it
+python dataset.py prepare --search-root . --also-single-copy
+python dataset.py audit   --dataset-root <dataset root>
+python dataset.py folds   --image-dirs <train/images> <valid/images> <test/images> --folds 5
+
+# ── model.py ── train, ablate, aggregate
+python model.py train     --name baseline --model yolov10s.pt --seeds 0 1 2 3 4
+python model.py train     --name baseline_cv --model yolov10s.pt --cv-dir configs/cv
+python model.py ablate    --dry-run          # what it would run, and what it costs
+python model.py ablate    --seeds 0 1 2
+python model.py aggregate --manifest results/ablation_manifest.json
+
+# ── evaluate.py ── per-class metrics with intervals, and head-to-head
+python evaluate.py per-class --weights runs/.../best.pt --images <test/images> --out results/v10s
+python evaluate.py compare   --runs runs/detect/Yolo_8n_250 runs/detect/Yolo_10s_train \
+                             runs/detect/Yolo_12m_250epochs \
+                             --labels YOLOv8n YOLOv10s YOLOv12m
+
+# ── evaluate_new.py ── why it is wrong, and where it looks
+python evaluate_new.py errors  --cache results/v10s/predictions.npz --out results/v10s
+python evaluate_new.py sweep   --cache results/v10s/predictions.npz
+python evaluate_new.py explain --weights runs/.../best.pt --images <test/images> --faithfulness
 ```
 
-You should see `Python 3.10.x` or higher. If not, download Python from [python.org](https://www.python.org/downloads/).
+Every command has `--help`. `dataset.py audit` is the one to run first on any new
+data.
+
+`make all` runs the audit, the folds, the comparison and the test suite. `make report` rebuilds the PDF.
 
 ---
 
-### Step 3 — Create a virtual environment
+## Design notes
 
-A virtual environment keeps project dependencies isolated from your system Python.
+A few choices that are not obvious:
 
-**Windows (PowerShell):**
-```powershell
-python -m venv .venv
+**Inference runs once; every metric reads a cache.** A bootstrap confidence
+interval needs the metric recomputed on hundreds of resamples. Re-running the
+network each time is wasteful, so `predict.py` caches per-image predictions and
+ground truth to an `.npz`, and everything downstream — per-class AP, intervals,
+error decomposition, threshold sweeps, model-vs-model comparison — is NumPy over
+that cache. One artefact, fully traceable, and a threshold sweep costs nothing.
+
+**AP is implemented here, not read off the framework**, for the same reason. It
+follows the COCO convention and is pinned by unit tests against Ultralytics'
+own `ap_per_class` to within 0.02 AP on randomised inputs
+(`tests/test_metrics.py`, 17 tests).
+
+**Precision and recall are reported at the deployed threshold (0.25)**, not as
+curve summaries. AP says nothing about behaviour at the operating point a
+clinician actually sees.
+
+**The bootstrap resamples images, not boxes.** Boxes within one radiograph are
+correlated; a box-level bootstrap would understate the interval.
+
+**Classes with no ground truth return NaN, never 0.0.** A silent zero in a macro
+average is the easiest way to publish a wrong number.
+
+**Ablations are deltas from one baseline**, declared in
+[`configs/ablation.yaml`](configs/ablation.yaml) with a stated hypothesis each,
+so any difference in the result is attributable to the delta. Every variant
+reports mean ± std over seeds with Welch's *t* and Cohen's *d*, so "moved the
+needle" and "within noise" are verdicts rather than adjectives.
+
+**Saliency maps are scored, not just shown.** Pointing-game energy (fraction of
+saliency mass inside the predicted boxes, against the box-area chance rate) and
+deletion AUC against a random-order baseline. A map that scores at chance is
+decoration.
+
+---
+
+## Layout
+
 ```
+dataset.py             prepare | audit | folds
+model.py               train | ablate | aggregate
+evaluate.py            per-class | compare
+evaluate_new.py        errors | sweep | explain
+app.py                 Streamlit viewer
+.streamlit/config.toml theme and upload limits
 
-**macOS / Linux:**
-```bash
-python3 -m venv .venv
+src/dentalscan/        the library those four CLIs share
+  constants.py         classes, validated palette, canonical paths
+  data.py              dataset audit, leakage check, grouped CV splits
+  metrics.py           AP, per-class metrics, bootstrap and paired bootstrap
+  predict.py           inference cache: predict once, analyse many times
+  error_analysis.py    TIDE-style decomposition, size strata, threshold sweep
+  explain.py           Eigen-CAM, Grad-CAM, pointing energy, deletion AUC
+  train.py             seeded training with recorded provenance
+  aggregate.py         mean ± std, Welch's t, Cohen's d, verdicts
+  report.py            Markdown and LaTeX table rendering
+  viz.py               figures
+
+configs/
+  data.yaml            generated by `dataset.py prepare`
+  ablation.yaml        the ablation grid, as deltas from the baseline
+  cv/                  generated fold configs and image lists
+tests/                 known-answer tests, cross-checked against Ultralytics
+report/                LaTeX source and the compiled PDF
+results/               generated metrics, figures, audit
 ```
 
 ---
 
-### Step 4 — Activate the virtual environment
+## Classes
 
-> ⚠️ You must activate the virtual environment **every time** you open a new terminal session.
+| # | Class     | Description |
+|---|-----------|-------------|
+| 0 | Caries    | Carious lesion — radiolucency in enamel or dentine |
+| 1 | Infection | Periapical or periodontal infection |
+| 2 | Impacted  | Tooth that failed to erupt into normal occlusion |
+| 3 | BDC/BDR   | Bone defect, coronal or root region |
+| 4 | Fractured | Crown or root fracture |
+| 5 | Healthy   | Normal tooth region, no visible pathology |
 
-**Windows (PowerShell):**
-```powershell
-.\.venv\Scripts\activate.ps1
-```
-
-**Windows (Command Prompt):**
-```cmd
-.venv\Scripts\activate.bat
-```
-
-**macOS / Linux:**
-```bash
-source .venv/bin/activate
-```
-
-When activated, your terminal prompt will show `(.venv)` at the beginning — for example:
-```
-(.venv) PS C:\Dev\Python\DentalScan AI>
-```
+`Healthy` is a background label rather than a condition, which makes the
+six-class mean a mixture of two different tasks. See the
+[model card](MODEL_CARD.md).
 
 ---
 
-### Step 5 — Install dependencies
-
-With the virtual environment active, run:
+## The viewer
 
 ```bash
 pip install -r requirements.txt
-```
-
-This installs Streamlit, Ultralytics (YOLOv10), OpenCV, Pillow, and NumPy. It may take a few minutes on first run.
-
----
-
-### Step 6 — Verify the fine-tuned model weights exist
-
-The app uses the fine-tuned model located at:
-```
-runs/detect/Yolo_10s_train/weights/best.pt
-```
-
-Make sure this file exists before running the app. If it is missing:
-- Either re-train the model (see [Training the Model](#-training-the-model-optional))
-- Or contact the project owner for the `best.pt` file
-- Or use the **hosted demo link** at the top of this README — no local weights needed
-
-> ⚠️ **Important:** If `best.pt` is missing, the app will show an amber warning dot and produce incorrect detections. The base `yolov10s.pt` file is **not** required to run the app — only `best.pt` is needed.
-
----
-
-## 🚀 Running the Web App
-
-Make sure your virtual environment is activated (you should see `(.venv)` in your terminal), then run:
-
-```bash
 streamlit run app.py
 ```
 
-After a moment, Streamlit will print something like:
+One centred column, no rail, no panels inside panels: the radiograph *is* the
+page and everything else is a quiet line of controls around it.
 
-```
-You can now view your Streamlit app in your browser.
-Local URL:  http://localhost:8501
-```
+**The image is the hero.** Scroll to zoom at the cursor, drag to pan,
+double-click to fit, `1:1` for actual pixels. The frame sizes itself to the
+study's aspect ratio rather than to a fixed number. The floating toolbar fades
+in on hover and stays out of the way otherwise; its `Overlay` slider crossfades
+between annotated and original, and `Compare` blanks the overlay while held —
+the fastest way to check a box sits on a real feature. A 30-pixel carious lesion
+on a 1935-pixel panoramic is unreadable at fit-to-width, so this is not
+decoration.
 
-Your default browser will open automatically. If it does not, copy and paste `http://localhost:8501` into your browser.
+**Progressive disclosure.** Condition filters are pills under the title; the
+confidence threshold is a single slider directly beneath the image, where the
+effect of moving it is visible without looking anywhere else. Everything
+else — box labels, interior wash, overlay strength, NMS IoU, inference size —
+lives behind `Settings`. Export lives behind `Export`. Saliency is a toggle that
+swaps the viewport contents in place rather than a second tab.
 
-To stop the app, press `Ctrl + C` in the terminal.
+**One forward pass.** Inference runs once per image at confidence 0.01. The
+threshold slider and the condition pills filter that cached result, so they
+respond instantly and every displayed number comes from a single pass. Changing
+NMS IoU or inference size does re-run the model, and the UI says which is which.
 
----
+**`Healthy` is grey and off by default.** It is a background label, not a
+finding, and 58% of all boxes in the training data; drawn like pathology it
+buries the pathology.
 
-## 🖥 Using the App
+**Measured recall travels with every detection.** Each finding carries its
+class's validation recall and support, badged ⚠ when the class has fewer than
+ten instances and is effectively unmeasured, ↓ when recall is below 0.70. A
+model that misses half of all infections should not present an infection the
+same way it presents an impacted tooth.
 
-Once the app is open in your browser:
+**Export.** Annotated PNG at full resolution, findings CSV, and a JSON record
+that names the weights and the image by SHA-256 and carries every threshold in
+force — so a finding can be traced back to exactly what produced it.
 
-### 1. Check the model status bar
-At the top of the page, a status bar shows which model is loaded:
-- 🟢 **Green dot** — the fine-tuned model is loaded. Detections will be accurate.
-- 🟡 **Amber dot** — the base model is loaded. Detections will be incorrect. See [Troubleshooting](#-troubleshooting).
+The app looks for `runs/detect/Yolo_10s_train/weights/best.pt`. Without it, it
+loads the base COCO model and says so in a red banner — those detections are
+meaningless for dental use.
 
-### 2. Upload an X-ray image
-In the **left panel**, click **Browse files** (or drag and drop) to upload a dental X-ray.  
-Supported formats: `.jpg`, `.jpeg`, `.png`
-
-### 3. Adjust detection settings (optional)
-Two sliders let you tune how detections work:
-
-| Slider | What it does | Tip |
-|--------|-------------|-----|
-| **Confidence threshold** | Minimum confidence for a box to be shown | Lower it (e.g. `0.10`) if nothing is detected |
-| **IoU / NMS threshold** | How much boxes can overlap before one is removed | Lower it to reduce duplicate boxes |
-
-### 4. Click "Run Detection"
-Switch to the **🎯 Detection Result** tab, then click the **🔍 Run Detection** button.
-
-The app will:
-- Run the YOLOv10s model on your image
-- Draw colour-coded bounding boxes on the result
-- Show summary metrics (number of detections, classes found, average confidence, inference time)
-- List every finding with its class name, bounding box coordinates, and confidence score
-
-### 5. View the class legend
-The bottom of the left panel shows the colour corresponding to each of the 6 classes.
-
----
-
-## 🧪 Training the Model (Optional)
-
-> Only needed if you want to train your own model from scratch or re-train with new data.
-
-**Prerequisites:**
-- An NVIDIA CUDA-capable GPU is strongly recommended (training on CPU will take many hours)
-- Download the dataset here: **[Dental OPG XRAY Dataset](https://data.mendeley.com/datasets/c4hhrkxytw/4)** and structure it in YOLO format.
-
-**Run training:**
-```bash
-python model.py
-```
-
-The script trains YOLOv10s for 250 epochs using the settings defined in `model.py`. Training results and weights are saved automatically to `runs/detect/Yolo_10s_train/`.
-
-Training configuration used:
-
-| Parameter | Value |
-|-----------|-------|
-| Base model | `yolov10s.pt` |
-| Epochs | 250 |
-| Image size | 640 × 640 |
-| Batch size | 8 |
-| Optimizer | Auto |
-| Device | CUDA (GPU) |
-| Augmentation | Mosaic, MixUp, Copy-Paste, Flips, Rotation |
-| Early stopping patience | 100 epochs |
+Box colours are the five-hue pathology palette in `constants.py`, chosen by
+search inside the OKLCH lightness band for a dark surface and verified against a
+six-check palette validator (lightness band, chroma floor, all-pairs
+colour-vision-deficient separation, all-pairs normal-vision separation, contrast
+against the surface). Class identity is never carried by colour alone: every box
+is labelled, labels stack across rows with leader lines rather than overwriting
+each other, and every findings row names the class in text.
 
 ---
 
-## 📊 Evaluating the Model (Optional)
+## Data
 
-To run a validation pass on the test set and print precision, recall, and mAP metrics:
+[Dental OPG X-Ray Dataset](https://data.mendeley.com/datasets/c4hhrkxytw/4),
+Mendeley Data. 231 annotated panoramic radiographs, six classes.
 
-```bash
-python evaluate.py
-```
+## Not a medical device
 
-For a more detailed evaluation that includes per-detection CNN cross-checking:
-```bash
-python evaluate_new.py
-```
-
-## 📄 License
-
-This project is for academic and research purposes.
-
----
-
-## 👤 Author
-
-Built with [Ultralytics YOLOv10](https://github.com/THU-MIG/yolov10) and [Streamlit](https://streamlit.io/).
+Research artefact and demonstration only. Not validated for clinical use, not
+calibrated, trained on a single-source dataset with one annotator and no
+inter-rater agreement statistics. Do not use it to make decisions about anyone's
+teeth.

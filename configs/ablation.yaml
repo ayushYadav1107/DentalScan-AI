@@ -1,0 +1,108 @@
+# Ablation grid for DentalScan AI.
+#
+# Every variant is a *delta from the baseline* - `disable` switches off a named
+# augmentation group, `set` overrides individual hyperparameters. Nothing else
+# changes, so any difference in the result is attributable to the delta.
+#
+# Cost: variants x seeds trainings. At ~72 min/run for YOLOv10s/250 epochs on a
+# single consumer GPU the full grid below is roughly 60 GPU-hours. Use
+# `--seeds 0 1 2` and `--set epochs=120` for a cheaper first pass; the ranking of
+# variants is stable well before the schedule finishes, only the absolute
+# numbers move.
+
+baseline:
+  name: baseline
+  model: yolov10s.pt
+
+seeds: [0, 1, 2]
+
+variants:
+  # ---- What does each augmentation family actually buy? -------------------
+  - name: no_mosaic
+    disable: [mosaic]
+    hypothesis: >
+      Mosaic composites four radiographs into one. Panoramic X-rays have a
+      fixed global anatomy (a single jaw arch, centred); mosaic destroys that
+      prior, so it may hurt rather than help here even though it is a reliable
+      win on natural images.
+
+  - name: no_mixup
+    disable: [mixup]
+    hypothesis: >
+      MixUp blends two radiographs. Blended lesions are not plausible X-rays,
+      and with 3293 Healthy boxes against 69 BDC/BDR boxes it mostly blends
+      Healthy into everything.
+
+  - name: no_copy_paste
+    disable: [copy_paste]
+    hypothesis: >
+      Copy-paste is the one augmentation that can directly add rare-class
+      instances, so removing it should hurt the rare classes specifically -
+      a per-class effect that aggregate mAP would hide.
+
+  - name: no_geometric
+    disable: [geometric]
+    hypothesis: >
+      Rotation/shear/perspective simulate patient positioning variation, which
+      is a genuine source of variance in OPG acquisition.
+
+  - name: no_photometric
+    disable: [photometric]
+    hypothesis: >
+      HSV jitter on a greyscale modality only perturbs value. Exposure varies
+      between machines, so some value jitter should help; hue and saturation
+      jitter should do nothing at all.
+
+  - name: no_flips
+    disable: [flips]
+    hypothesis: >
+      Left-right flip is anatomically valid for a jaw arch. Vertical flip is
+      not - an upside-down OPG never occurs - so flipud=0.2 may be pure noise.
+
+  - name: augment_off
+    disable: [geometric, flips, photometric, mosaic, mixup, copy_paste]
+    hypothesis: >
+      Floor of the ablation: how much of the reported performance is the
+      augmentation recipe and how much is the pretrained backbone?
+
+  # ---- Does the offline 3x Roboflow augmentation still earn its place? ----
+  - name: no_offline_aug
+    set: {}
+    data: configs/data_single_copy.yaml
+    hypothesis: >
+      The published split ships three offline-augmented copies of every
+      training radiograph, on top of Ultralytics' online augmentation. Keeping
+      one copy per source radiograph isolates what that offline pass adds - it
+      may be adding nothing but epoch time.
+      Requires: python dataset.py prepare --also-single-copy
+
+  # ---- Schedule and optimisation ----------------------------------------
+  - name: cosine_lr
+    set: {cos_lr: true}
+    hypothesis: Cosine decay usually buys a little on long schedules.
+
+  - name: lower_lr
+    set: {lr0: 0.005}
+    hypothesis: >
+      A 517-image dataset with a pretrained backbone may prefer a gentler
+      learning rate than the COCO-scale default.
+
+  - name: imgsz_960
+    set: {imgsz: 960, batch: 4}
+    hypothesis: >
+      Carious lesions are small relative to a panoramic field of view. If the
+      size-stratified recall shows a small-object deficit, resolution is the
+      cheapest lever - and this is the ablation that tests it.
+
+# ---- Head-to-head across detector families --------------------------------
+# Trained with the identical baseline recipe so the only difference is the
+# architecture.
+models:
+  - name: yolov8n
+    model: yolov8n.pt
+  - name: yolov8s
+    model: yolov8s.pt
+  - name: yolov10s
+    model: yolov10s.pt
+  - name: yolo12m
+    model: yolo12m.pt

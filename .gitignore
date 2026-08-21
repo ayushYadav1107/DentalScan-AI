@@ -1,22 +1,45 @@
-# Python Virtual Environment
+# Python
 .venv/
 venv/
 env/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # IDEs
 .idea/
 .vscode/
 
-# Dataset folders (contains large images/labels not suitable for git)
+# Dataset (large; download from Mendeley, see README)
+Dataset/
 dataset/
 
-# Training artifacts & runs
-# We ignore the entire runs directory EXCEPT the final model weights needed for the app
+# Training artefacts. Everything under runs/ is reproducible from the scripts,
+# except the deployed weights the app needs and the per-epoch logs the
+# comparison figures are built from.
 runs/
+!runs/detect/Yolo_10s_train/
+!runs/detect/Yolo_10s_train/weights/
 !runs/detect/Yolo_10s_train/weights/best.pt
+!runs/detect/*/
+!runs/detect/*/results.csv
 
-# Large models/weights just in case
+# Model weights
 *.pt
 !runs/detect/Yolo_10s_train/weights/best.pt
+
+# Generated results are checked in (they are the reported numbers), but the
+# prediction caches that produce them are not - they are large and rebuildable.
+results/**/predictions.npz
+configs/cv/
+configs/data.yaml
+
+# LaTeX build products
+report/*.aux
+report/*.log
+report/*.out
+report/*.bbl
+report/*.blg
+
+# Scratch
+_labels_export.tgz

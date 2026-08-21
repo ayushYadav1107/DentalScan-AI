@@ -1,12 +1,17 @@
-path: C:/Dev/Python/Yolo/dataset
-test: images/test
-train: images/train
-val: images/val
+# Deprecated. The dataset config is now generated, not hand-maintained.
+#
+#     python scripts/00_prepare_data.py --search-root . --also-single-copy
+#
+# writes configs/data.yaml with absolute paths resolved on this machine, so the
+# config never goes stale when the dataset moves. The path this file used to
+# hard-code (C:/Dev/Python/Yolo/dataset) no longer exists.
+#
+# Class order is authoritative in src/dentalscan/constants.py.
 
 names:
-    0: Caries
-    1: Infection
-    2: Impacted
-    3: BDC/BDR
-    4: Fractured
-    5: Healthy
+  0: Caries
+  1: Infection
+  2: Impacted
+  3: BDC/BDR
+  4: Fractured
+  5: Healthy

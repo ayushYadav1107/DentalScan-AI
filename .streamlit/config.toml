@@ -1,0 +1,22 @@
+# Production chrome. Without this Streamlit paints its default red on every
+# slider, checkbox and focus ring, which fights the clinical palette and reads
+# as "alert" on a screen whose whole job is to signal severity.
+
+[theme]
+base                = "dark"
+primaryColor        = "#4C9AFF"
+backgroundColor     = "#0A0B0D"
+secondaryBackgroundColor = "#121417"
+textColor           = "#E6E8EB"
+font                = "sans serif"
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = true
+
+[server]
+maxUploadSize = 25
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false

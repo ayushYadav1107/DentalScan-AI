@@ -1,0 +1,26 @@
+{
+  "YOLOv8n": {
+    "epochs": 250,
+    "best_epoch": 198,
+    "best_mAP50": 0.79471,
+    "best_mAP50_95": 0.4803,
+    "final_mAP50": 0.76567,
+    "train_minutes": 29.7
+  },
+  "YOLOv10s": {
+    "epochs": 250,
+    "best_epoch": 214,
+    "best_mAP50": 0.9284,
+    "best_mAP50_95": 0.61095,
+    "final_mAP50": 0.87431,
+    "train_minutes": 72.0
+  },
+  "YOLOv12m": {
+    "epochs": 250,
+    "best_epoch": 240,
+    "best_mAP50": 0.90935,
+    "best_mAP50_95": 0.6245,
+    "final_mAP50": 0.86692,
+    "train_minutes": 332.2
+  }
+}
