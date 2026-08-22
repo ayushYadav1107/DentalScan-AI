@@ -1,28 +1,3 @@
-"""DentalScan AI - dental condition detection on panoramic radiographs.
-
-Two screens. Before a study is loaded, the claim and the drop target sit side by
-side over the per-class recall the model was actually measured at - the caveat
-leads rather than trails. Once a study is loaded the page is a viewer: the
-radiograph and the two controls that govern it on the left, an evidence rail on
-the right. The radiograph is the brightest thing on screen throughout, the
-chrome is recessive, and every number the interface shows is one the harness in
-this repository can regenerate.
-
-Three properties worth knowing about before reading the code:
-
-* **Inference runs once per image, at conf=0.01.** Changing the confidence
-  threshold or toggling a class re-filters that cached result rather than
-  re-running the network, so the controls respond instantly and the displayed
-  numbers always come from a single forward pass.
-* **Class identity is never carried by colour alone.** Every box has a text
-  label, every findings row repeats the class name, and ``Healthy`` - a
-  background label, not a finding, and 58% of all boxes in the dataset - is
-  drawn as a recessive grey outline so it cannot dominate the pathology.
-* **Measured recall travels with every detection.** A model that finds half of
-  all infections should not present an infection the same way it presents an
-  impacted tooth, and this interface does not.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -152,6 +127,24 @@ FALLBACK_MODEL = "yolov10s.pt"
 MAX_UPLOAD_MB = 25
 CACHE_CONF = 0.01          # inference floor; the UI threshold filters this cache
 PATHOLOGY_IDS = [i for i in CLASS_NAMES if i != HEALTHY_ID]
+
+# A few radiographs bundled with the app so the viewer can be tried without
+# hunting one down first. Pulled from the classification split of the same
+# Mendeley dataset the detector is trained on (see README > Data), downscaled
+# for the repo. The label names the folder they came from in that dataset -
+# not a claim about what the detector will find, which is the whole point of
+# a viewer that shows measured recall instead of trusting its own labels.
+SAMPLES_DIR = APP_DIR / "assets" / "samples"
+SAMPLE_STUDIES = [
+    {"slug": "caries", "file": "caries.jpg", "thumb": "thumbs/caries.jpg",
+     "label": "Caries", "source": "Caries-labelled"},
+    {"slug": "fractured", "file": "fractured.jpg", "thumb": "thumbs/fractured.jpg",
+     "label": "Fractured", "source": "Fractured-labelled"},
+    {"slug": "impacted", "file": "impacted.jpg", "thumb": "thumbs/impacted.jpg",
+     "label": "Impacted", "source": "Impacted-labelled"},
+    {"slug": "bdcbdr", "file": "bdcbdr.jpg", "thumb": "thumbs/bdcbdr.jpg",
+     "label": "BDC/BDR", "source": "BDC/BDR-labelled"},
+]
 
 # Marks. Inline SVG rather than an icon font: nothing to fetch, no flash of a
 # missing glyph, and the stroke inherits currentColor.
@@ -458,9 +451,9 @@ VIEWPORT_TEMPLATE = """
      frame in screen space, so they never scale with the image. */
   #marks { position: absolute; inset: 0; pointer-events: none; }
   .badge { position: absolute; transform: translate(-50%,-50%) scale(.4);
-           width: 26px; height: 26px; border-radius: 50%;
+           width: 29px; height: 29px; border-radius: 50%;
            display: grid; place-items: center;
-           font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+           font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
            background: rgba(15,16,24,.94); border: 2px solid currentColor;
            box-shadow: 0 3px 10px rgba(0,0,0,.7);
            pointer-events: auto; cursor: pointer; opacity: 0;
@@ -473,7 +466,7 @@ VIEWPORT_TEMPLATE = """
   .badge:hover, .badge.on { transform: translate(-50%,-50%) scale(1.25); }
   .chip { position: absolute; transform: translate(0,-50%);
           display: flex; align-items: center; gap: 7px; white-space: nowrap;
-          padding: 5px 11px; border-radius: 9px; font-size: 13px; font-weight: 600;
+          padding: 5px 11px; border-radius: 9px; font-size: 14px; font-weight: 600;
           color: #0F1018; box-shadow: 0 3px 12px rgba(0,0,0,.6);
           opacity: 0; animation: fadein .5s ease forwards; }
   .chip .c { font-weight: 500; opacity: .78; font-variant-numeric: tabular-nums; }
@@ -481,16 +474,16 @@ VIEWPORT_TEMPLATE = """
 
   #tip { position: absolute; z-index: 9; pointer-events: none; opacity: 0;
          transform: translate(-50%, -100%) translateY(-14px);
-         transition: opacity .16s ease; min-width: 168px;
-         padding: 11px 13px; border-radius: 12px; font-size: 13px; line-height: 1.5;
+         transition: opacity .16s ease; min-width: 178px;
+         padding: 12px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5;
          background: rgba(35,37,50,.94); backdrop-filter: blur(16px) saturate(1.5);
          border: 1px solid rgba(255,255,255,.12);
          box-shadow: 0 18px 44px -14px rgba(0,0,0,.9); color: #F3F5FE; }
   #tip.on { opacity: 1; }
   #tip .t { display: flex; align-items: center; gap: 8px; font-weight: 650;
-            font-size: 14px; margin-bottom: 5px; }
+            font-size: 15px; margin-bottom: 5px; }
   #tip .sw { width: 10px; height: 10px; border-radius: 3px; }
-  #tip .m { color: #9397AB; font-size: 12.5px; }
+  #tip .m { color: #B2B6CA; font-size: 13.5px; }
   #tip .m b { color: #F3F5FE; font-weight: 600; font-variant-numeric: tabular-nums; }
 
   #bar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(6px);
@@ -503,17 +496,17 @@ VIEWPORT_TEMPLATE = """
   #shell:hover #bar, #bar:focus-within { opacity: 1; transform: translateX(-50%) translateY(0); }
 
   .btn { appearance: none; border: 0; background: transparent; color: #B2B6CA;
-         font-size: 13.5px; font-weight: 500; padding: 7px 12px; border-radius: 10px;
+         font-size: 14.5px; font-weight: 500; padding: 7px 12px; border-radius: 10px;
          cursor: pointer; line-height: 1.4; font-variant-numeric: tabular-nums;
          transition: background .16s ease, color .16s ease, transform .16s ease; }
   .btn:hover { background: rgba(255,255,255,.1); color: #FFF; transform: translateY(-1px); }
   .btn:active { transform: translateY(0) scale(.96); }
   .btn:focus-visible { outline: 2px solid #9184D9; outline-offset: 2px; }
-  .btn.icon { min-width: 32px; text-align: center; font-size: 16px; padding: 5px 9px; }
-  #zoomval { font-size: 13px; color: #9397AB; min-width: 50px; text-align: center;
+  .btn.icon { min-width: 32px; text-align: center; font-size: 17px; padding: 5px 9px; }
+  #zoomval { font-size: 14px; color: #B2B6CA; min-width: 50px; text-align: center;
              font-variant-numeric: tabular-nums; }
   .sep { width: 1px; height: 18px; background: rgba(255,255,255,.11); margin: 0 5px; }
-  .lbl { font-size: 12px; color: #75798C; letter-spacing: .3px; padding-left: 5px; }
+  .lbl { font-size: 13px; color: #9397AB; letter-spacing: .3px; padding-left: 5px; }
   input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; width: 96px;
                       border-radius: 3px; background: rgba(255,255,255,.18); cursor: pointer; }
   input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px;
@@ -522,7 +515,7 @@ VIEWPORT_TEMPLATE = """
       border-radius: 50%; background: #F3F5FE; }
 
   #hint { position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
-          font-size: 12.5px; color: #9397AB; padding: 7px 15px; border-radius: 100px;
+          font-size: 13.5px; color: #B2B6CA; padding: 7px 15px; border-radius: 100px;
           background: rgba(22,24,38,.86); border: 1px solid rgba(255,255,255,.08);
           backdrop-filter: blur(12px); pointer-events: none;
           animation: hint 5s ease forwards; }
@@ -531,7 +524,7 @@ VIEWPORT_TEMPLATE = """
                     72% { opacity: 1; } 100% { opacity: 0; } }
 
   #empty { position: absolute; inset: 0; display: grid; place-items: center;
-           font-size: 14px; color: #75798C; pointer-events: none; }
+           font-size: 15px; color: #9397AB; pointer-events: none; }
 
   @media (prefers-reduced-motion: reduce) {
     * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -1018,16 +1011,16 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
             box-shadow: 0 0 22px -6px color-mix(in srgb, var(--accent) 55%, transparent);
             transition: transform .4s var(--ease); }
 .nav:hover .nav-logo { transform: rotate(-6deg) scale(1.06); }
-.nav-brand { font-size: 17px; font-weight: 600; letter-spacing: -.3px; line-height: 1.15; }
-.nav-sub { font-size: 12.5px; color: var(--ink-3); line-height: 1.3; margin-top: 1px; }
-.nav-links { display: flex; align-items: center; gap: 26px; font-size: 14px; }
+.nav-brand { font-size: 18.5px; font-weight: 600; letter-spacing: -.3px; line-height: 1.15; }
+.nav-sub { font-size: 13.5px; color: var(--ink-2); line-height: 1.3; margin-top: 1px; }
+.nav-links { display: flex; align-items: center; gap: 26px; font-size: 15px; }
 .nav-links a { color: var(--ink-3); font-weight: 400; transition: color .18s ease; }
 .nav-links a:hover { color: var(--ink); text-decoration: none; }
 .nav-rule { width: 1px; height: 24px; background: var(--line-2); margin: 0 4px; }
 .sp { flex: 1 1 auto; }
 
 .status { display: inline-flex; align-items: center; gap: 9px; padding: 8px 15px;
-          border-radius: 100px; font-size: 13.5px; white-space: nowrap;
+          border-radius: 100px; font-size: 14.5px; white-space: nowrap;
           background: color-mix(in srgb, var(--ok) 8%, transparent);
           border: 1px solid color-mix(in srgb, var(--ok) 28%, transparent);
           color: var(--ok-ink); }
@@ -1045,16 +1038,16 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 /* -- hero ------------------------------------------------------------------ */
 .hero { padding: 62px 0 18px; }
 .eyebrow { display: inline-flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px;
-           border-radius: 100px; font-size: 13px; color: var(--accent-400);
+           border-radius: 100px; font-size: 14px; color: var(--accent-400);
            background: color-mix(in srgb, var(--accent-900) 70%, transparent);
            border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
            margin-bottom: 26px; }
 .eyebrow i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.hero h1 { font-size: clamp(40px, 4.6vw, 62px); font-weight: 500; line-height: 1.05;
+.hero h1 { font-size: clamp(42px, 4.8vw, 66px); font-weight: 500; line-height: 1.05;
            letter-spacing: -2.4px; margin: 0 0 22px; color: var(--ink); text-wrap: pretty; }
-.hero p { font-size: 19px; line-height: 1.6; color: var(--ink-2); max-width: 520px;
+.hero p { font-size: 20px; line-height: 1.6; color: var(--ink-2); max-width: 520px;
           margin: 0 0 4px; text-wrap: pretty; }
-.hero .fine { font-size: 14px; color: var(--ink-3); line-height: 1.7; max-width: 500px;
+.hero .fine { font-size: 15px; color: var(--ink-2); line-height: 1.7; max-width: 500px;
               margin-top: 26px; }
 
 /* The frame around the drop target. The design put a worked example here; the
@@ -1074,9 +1067,33 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 .frame-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
               padding: 15px 20px; border-top: 1px solid var(--line);
               background: rgba(22,24,38,.7);
-              font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--ink-3); }
+              font-family: 'IBM Plex Mono', monospace; font-size: 13.5px; color: var(--ink-2); }
 .frame-foot .ready { display: inline-flex; align-items: center; gap: 7px; margin-left: auto;
-                     font-family: 'Inter', sans-serif; font-size: 13px; color: var(--ink-2); }
+                     font-family: 'Inter', sans-serif; font-size: 14px; color: var(--ink-2); }
+
+/* -- sample strip -----------------------------------------------------------
+   Four bundled radiographs under the drop target, so trying the viewer never
+   depends on having an OPG on hand. Each tile is a plain image + a real
+   button beneath it - Streamlit buttons can't carry a background image, and a
+   click target that is only "the picture" is not reliably clickable, so the
+   button is the affordance and the thumbnail is the preview. */
+.sample-row { margin-top: 18px; }
+.sample-lbl { font-size: 13px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase;
+              color: var(--ink-4); text-align: center; margin-bottom: 12px; }
+.st-key-samples [data-testid="stHorizontalBlock"] { gap: 10px; }
+.sample-thumb { position: relative; border-radius: 11px; overflow: hidden;
+                border: 1px solid var(--line); background: var(--bg-deep);
+                transition: border-color .25s ease, transform .25s var(--ease); }
+.sample-thumb img { display: block; width: 100%; height: 68px; object-fit: cover;
+                     filter: saturate(0) brightness(.9); transition: filter .25s ease; }
+.sample-thumb:hover { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+                       transform: translateY(-2px); }
+.sample-thumb:hover img { filter: saturate(0) brightness(1.08); }
+.sample-cap { padding: 7px 4px 8px; font-size: 12.5px; color: var(--ink-3); text-align: center;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-key-samples .stButton { margin-top: 6px; }
+.st-key-samples .stButton > button {
+  font-size: 13px !important; padding: 7px 8px !important; width: 100%; }
 
 /* -- evidence band --------------------------------------------------------- */
 .band { position: relative; overflow: hidden; border-radius: 24px; margin-top: 34px;
@@ -1088,10 +1105,10 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
                   color-mix(in srgb, var(--accent) 30%, transparent), transparent 66%);
                 animation: glow 6s ease-in-out infinite; }
 .band-in { position: relative; padding: 42px 42px 38px; }
-.band h2 { font-size: 30px; font-weight: 500; letter-spacing: -.9px; margin: 0; color: var(--ink); }
+.band h2 { font-size: 32px; font-weight: 500; letter-spacing: -.9px; margin: 0; color: var(--ink); }
 .band-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; margin-bottom: 10px; }
-.band-head span { font-size: 14.5px; color: var(--accent-2-400); }
-.band p { font-size: 15.5px; line-height: 1.65; color: var(--ink-2); max-width: 760px;
+.band-head span { font-size: 15.5px; color: var(--accent-2-400); }
+.band p { font-size: 16.5px; line-height: 1.65; color: var(--ink-2); max-width: 760px;
           margin: 0 0 32px; }
 /* Six classes, so the grid steps 6 -> 3 -> 2 rather than reflowing freely:
    auto-fit leaves Healthy stranded alone on a second row at most widths. */
@@ -1103,12 +1120,12 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 .cls-bar { height: 4px; border-radius: 3px; margin-bottom: 16px; background: var(--c);
            box-shadow: 0 0 14px -2px var(--c); transform-origin: left;
            animation: grow .9s var(--ease) both; }
-.cls-n { font-size: 15px; font-weight: 500; color: var(--ink); }
+.cls-n { font-size: 16px; font-weight: 500; color: var(--ink); }
 .cls-v { display: flex; align-items: baseline; gap: 6px; margin-top: 12px; }
 .cls-v b { font-size: 38px; font-weight: 500; letter-spacing: -1.4px; line-height: 1;
            font-variant-numeric: tabular-nums; }
-.cls-v span { font-size: 14px; color: var(--ink-3); }
-.cls-note { margin-top: 14px; font-size: 13.5px; line-height: 1.5; color: var(--ink-3); }
+.cls-v span { font-size: 15px; color: var(--ink-3); }
+.cls-note { margin-top: 14px; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
 .cls.low .cls-v b { color: var(--ink-4); }
 .cls.low .cls-note { color: var(--warn-ink); }
 
@@ -1121,34 +1138,49 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 .note:hover { transform: translateY(-6px);
               border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
 .note-n { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
-          margin-bottom: 20px; font-family: 'IBM Plex Mono', monospace; font-size: 15px;
+          margin-bottom: 20px; font-family: 'IBM Plex Mono', monospace; font-size: 16px;
           color: var(--accent-400);
           background: color-mix(in srgb, var(--accent) 12%, transparent);
           border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); }
-.note-t { font-size: 18px; font-weight: 500; letter-spacing: -.3px; margin-bottom: 10px; }
-.note-d { font-size: 15px; line-height: 1.68; color: var(--ink-3); }
+.note-t { font-size: 19px; font-weight: 500; letter-spacing: -.3px; margin-bottom: 10px; }
+.note-d { font-size: 16px; line-height: 1.68; color: var(--ink-2); }
 
 /* -- study head ------------------------------------------------------------ */
 .studybar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .study-name { font-size: 22px; font-weight: 500; letter-spacing: -.5px; color: var(--ink); }
 .study-dim { padding: 4px 10px; border-radius: 6px; font-family: 'IBM Plex Mono', monospace;
-             font-size: 12.5px; color: var(--ink-3);
+             font-size: 13.5px; color: var(--ink-2);
              background: color-mix(in srgb, var(--ink) 6%, transparent);
              border: 1px solid var(--line); }
-.study-meta { font-size: 14px; color: var(--ink-3); margin-top: 6px; }
+.study-meta { font-size: 15px; color: var(--ink-2); margin-top: 6px; }
 .study-meta b { color: var(--ink); font-weight: 500; }
 
 /* -- threshold card -------------------------------------------------------- */
-.st-key-thresh { padding: 22px 26px 6px; border-radius: var(--r-lg);
+/* The 0.05/0.95 endpoints are pinned to the card's own padding box rather than
+   left in normal flow. Flow-positioned, they sat under Streamlit's fixed
+   16px inter-element gap, which read as too loose - and the negative margin
+   used to close that gap made the card mis-measure its own height, so the
+   text rendered past the rounded corner instead of inside it. Pinning removes
+   both problems: the padding-bottom below is the only thing that reserves
+   their space, so it can't be miscounted. */
+.st-key-thresh { position: relative; padding: 22px 26px 42px; border-radius: var(--r-lg);
                  background: var(--surface); border: 1px solid var(--line); }
 .thresh-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
-.thresh-head .t { font-size: 16px; font-weight: 500; color: var(--ink); }
+.thresh-head .t { font-size: 17px; font-weight: 500; color: var(--ink); }
 .thresh-head .v { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 500;
                   letter-spacing: -.6px; color: var(--accent-400);
                   font-variant-numeric: tabular-nums; }
-.thresh-head .n { font-size: 14.5px; color: var(--ink-3); margin-left: auto; text-align: right; }
-.thresh-ends { display: flex; justify-content: space-between; margin-top: -6px;
-               font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--ink-5); }
+.thresh-head .n { font-size: 15.5px; color: var(--ink-2); margin-left: auto; text-align: right; }
+/* Streamlit gives every element wrapper its own position:relative, which would
+   otherwise become .thresh-ends's containing block instead of the card - and
+   that wrapper sits inset by the card's own padding already, so an offset
+   measured against it double-counts the padding. Flattening it back to static
+   hands the containing block to .st-key-thresh, where the offsets below are
+   actually meant to apply. */
+.st-key-thresh [data-testid="stElementContainer"]:has(.thresh-ends) { position: static; }
+.thresh-ends { position: absolute; left: 26px; right: 26px; bottom: 16px;
+               display: flex; justify-content: space-between;
+               font-family: 'IBM Plex Mono', monospace; font-size: 13.5px; color: var(--ink-4); }
 
 /* -- stat tiles ------------------------------------------------------------ */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -1160,14 +1192,14 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
           font-variant-numeric: tabular-nums; color: var(--ink); }
 .tile-v.muted { color: var(--ink-5); }
 .tile-v.warn  { color: var(--warn-ink); }
-.tile-v small { font-size: 15px; font-weight: 400; letter-spacing: 0; color: var(--ink-4);
+.tile-v small { font-size: 16px; font-weight: 400; letter-spacing: 0; color: var(--ink-4);
                 margin-left: 3px; }
-.tile-k { font-size: 13.5px; line-height: 1.35; color: var(--ink-3); margin-top: 10px; }
+.tile-k { font-size: 14.5px; line-height: 1.35; color: var(--ink-2); margin-top: 10px; }
 
 /* -- section heading ------------------------------------------------------- */
 .sec { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 6px 0 0; }
-.sec h2 { font-size: 17px; font-weight: 500; letter-spacing: -.2px; margin: 0; color: var(--ink); }
-.sec span { font-size: 14px; color: var(--ink-3); }
+.sec h2 { font-size: 18px; font-weight: 500; letter-spacing: -.2px; margin: 0; color: var(--ink); }
+.sec span { font-size: 15px; color: var(--ink-2); }
 
 /* -- findings -------------------------------------------------------------- */
 .flist { display: flex; flex-direction: column; gap: 12px; }
@@ -1179,9 +1211,9 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
               border-color: color-mix(in srgb, var(--accent) 34%, transparent);
               border-left-color: var(--c); }
 .find-top { display: flex; align-items: center; gap: 12px; }
-.find-i { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink-4);
-          width: 16px; flex: none; }
-.find-n { font-size: 18px; font-weight: 500; letter-spacing: -.2px; color: var(--ink); }
+.find-i { font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: var(--ink-4);
+          width: 18px; flex: none; }
+.find-n { font-size: 19px; font-weight: 500; letter-spacing: -.2px; color: var(--ink); }
 .find-c { margin-left: auto; font-size: 22px; font-weight: 500; letter-spacing: -.6px;
           color: var(--c); font-variant-numeric: tabular-nums; }
 .find-bar { height: 5px; border-radius: 3px; margin: 14px 0; overflow: hidden;
@@ -1190,10 +1222,10 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
               transform-origin: left; animation: grow .85s var(--ease) forwards;
               box-shadow: 0 0 12px -2px var(--c); }
 .find-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.find-box { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink-4);
+.find-box { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink-4);
             margin-left: auto; }
 .tag { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px 5px 9px;
-       border-radius: 100px; font-size: 13px; white-space: nowrap;
+       border-radius: 100px; font-size: 14px; white-space: nowrap;
        border: 1px solid transparent; font-variant-numeric: tabular-nums; }
 .tag i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 .tag.ok         { color: var(--ok-ink);    background: color-mix(in srgb, var(--ok) 9%, transparent);
@@ -1204,7 +1236,7 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
                   border-color: color-mix(in srgb, var(--alert) 30%, transparent); }
 .tag.unknown    { color: var(--ink-3); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 
-.railnote { padding: 18px 20px; border-radius: var(--r-md); font-size: 13.5px; line-height: 1.68;
+.railnote { padding: 18px 20px; border-radius: var(--r-md); font-size: 14.5px; line-height: 1.68;
             color: var(--ink-2);
             background: color-mix(in srgb, var(--accent) 6%, transparent);
             border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent); }
@@ -1215,7 +1247,7 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 .skel { border-radius: var(--r); border: 1px solid var(--line); overflow: hidden;
         background: linear-gradient(100deg, var(--surface) 30%, #33364A 50%, var(--surface) 70%);
         background-size: 220% 100%; animation: shimmer 1.4s linear infinite; }
-.skel-note { display: flex; align-items: center; gap: 13px; font-size: 15px;
+.skel-note { display: flex; align-items: center; gap: 13px; font-size: 16px;
              color: var(--ink-2); margin-top: 18px; }
 .spinner { width: 17px; height: 17px; border-radius: 50%; flex: none;
            border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
@@ -1223,7 +1255,7 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 
 /* -- notices --------------------------------------------------------------- */
 .notice { border-radius: var(--r-md); padding: 17px 20px; margin-bottom: 20px;
-          font-size: 15px; line-height: 1.62; border: 1px solid; animation: fade .4s ease; }
+          font-size: 16px; line-height: 1.62; border: 1px solid; animation: fade .4s ease; }
 .notice.alert { background: color-mix(in srgb, var(--alert) 8%, transparent);
                 border-color: color-mix(in srgb, var(--alert) 30%, transparent); color: var(--alert-ink); }
 .notice.warn  { background: color-mix(in srgb, var(--warn) 8%, transparent);
@@ -1231,11 +1263,11 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 .notice.quiet { background: color-mix(in srgb, var(--ink) 3%, transparent);
                 border: 1px dashed var(--line-2); color: var(--ink-3); }
 .notice b { color: var(--ink); font-weight: 600; }
-.notice code, .study-meta code { font-family: 'IBM Plex Mono', monospace; font-size: 13.5px;
+.notice code, .study-meta code { font-family: 'IBM Plex Mono', monospace; font-size: 14.5px;
                                  padding: 2px 7px; border-radius: 6px;
                                  background: color-mix(in srgb, var(--ink) 7%, transparent); }
 
-.foot { font-size: 13.5px; color: var(--ink-4); line-height: 1.72; margin-top: 18px; }
+.foot { font-size: 14.5px; color: var(--ink-3); line-height: 1.72; margin-top: 18px; }
 .foot b { color: var(--ink-2); font-weight: 500; }
 
 /* -- Streamlit widgets ----------------------------------------------------- */
@@ -1248,21 +1280,21 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 [data-testid="stFileUploaderDropzone"] button {
   background: transparent !important; color: var(--accent-300) !important;
   border: 1px solid var(--accent) !important; font-weight: 500 !important;
-  font-size: 15px !important; border-radius: 10px !important; padding: 12px 22px !important;
+  font-size: 16px !important; border-radius: 10px !important; padding: 12px 22px !important;
   transition: background .2s ease, transform .2s var(--ease), box-shadow .2s ease !important; }
 [data-testid="stFileUploaderDropzone"] button:hover {
   background: color-mix(in srgb, var(--accent) 14%, transparent) !important;
   transform: translateY(-2px);
   box-shadow: 0 10px 28px -12px color-mix(in srgb, var(--accent) 80%, transparent) !important; }
 [data-testid="stFileUploaderDropzone"] small,
-[data-testid="stFileUploaderDropzone"] span { color: var(--ink-3) !important; font-size: 14.5px !important; }
+[data-testid="stFileUploaderDropzone"] span { color: var(--ink-2) !important; font-size: 15.5px !important; }
 [data-testid="stFileUploaderFile"] { background: color-mix(in srgb, var(--ink) 5%, transparent);
-                                     border-radius: 10px; font-size: 14.5px; }
+                                     border-radius: 10px; font-size: 15.5px; }
 
 /* Buttons are outlined, not filled - Nocturne carries emphasis with an edge. */
 .stButton > button, .stDownloadButton > button, [data-testid="stPopover"] button {
   background: transparent; color: var(--ink-2); border: 1px solid var(--line-2);
-  border-radius: var(--r-s); font-size: 14.5px; font-weight: 450; padding: 10px 18px;
+  border-radius: var(--r-s); font-size: 15.5px; font-weight: 450; padding: 10px 18px;
   transition: background .2s ease, border-color .2s ease, color .2s ease, transform .2s var(--ease); }
 .stButton > button:hover, .stDownloadButton > button:hover, [data-testid="stPopover"] button:hover {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
@@ -1284,7 +1316,7 @@ div[data-baseweb="button-group"] { gap: 10px; flex-wrap: wrap; }
 [data-testid="stBaseButton-pills"], [data-testid="stBaseButton-pillsActive"],
 button[aria-pressed] {
   background: transparent !important; border: 1px solid var(--line-2) !important;
-  color: var(--ink-3) !important; border-radius: 100px !important; font-size: 14.5px !important;
+  color: var(--ink-3) !important; border-radius: 100px !important; font-size: 15.5px !important;
   font-weight: 450 !important; padding: 9px 18px !important;
   transition: transform .2s var(--ease), background .2s ease,
               border-color .2s ease, color .2s ease !important; }
@@ -1304,23 +1336,23 @@ button[aria-pressed]:hover { transform: translateY(-2px); color: var(--ink) !imp
    room; the thumb label beneath it would only say the same thing again. */
 .st-key-thresh [data-testid="stSliderThumbValue"] { visibility: hidden; }
 [data-testid="stWidgetLabel"] p, .stSlider label, .stCheckbox label, .stToggle label {
-  font-size: 14.5px !important; color: var(--ink-3) !important; font-weight: 450 !important; }
-[data-testid="stCheckbox"] label span, [data-testid="stToggle"] label span { font-size: 14.5px; }
+  font-size: 15.5px !important; color: var(--ink-2) !important; font-weight: 450 !important; }
+[data-testid="stCheckbox"] label span, [data-testid="stToggle"] label span { font-size: 15.5px; }
 
 [data-testid="stExpander"] { border: 1px solid var(--line); border-radius: var(--r-md);
   background: var(--surface); transition: border-color .3s ease; }
 [data-testid="stExpander"]:hover { border-color: var(--line-2); }
-[data-testid="stExpander"] summary { font-size: 15px; color: var(--ink-2); padding: 8px 4px;
-                                     font-weight: 450; }
+[data-testid="stExpander"] summary { font-size: 16px; color: var(--ink-2); padding: 8px 4px;
+                                     font-weight: 500; }
 [data-testid="stExpander"] summary:hover { color: var(--ink); }
 [data-testid="stExpanderDetails"] p, [data-testid="stExpanderDetails"] li,
 [data-testid="stExpanderDetails"] td, [data-testid="stExpanderDetails"] th {
-  font-size: 15px; line-height: 1.78; color: var(--ink-2); }
+  font-size: 16px; line-height: 1.78; color: var(--ink-2); }
 [data-testid="stExpanderDetails"] strong { color: var(--ink); }
 [data-testid="stExpanderDetails"] table { border-collapse: collapse; }
-[data-testid="stExpanderDetails"] th { color: var(--ink-3); font-weight: 500; font-size: 13.5px; }
+[data-testid="stExpanderDetails"] th { color: var(--ink-2); font-weight: 500; font-size: 14.5px; }
 
-[data-testid="stCaptionContainer"] p { font-size: 14px; color: var(--ink-3); line-height: 1.7; }
+[data-testid="stCaptionContainer"] p { font-size: 15px; color: var(--ink-2); line-height: 1.7; }
 a { color: var(--accent-400); text-decoration: none; font-weight: 450; }
 a:hover { color: var(--accent-300); text-decoration: underline; }
 hr { border-color: var(--line); }
@@ -1331,7 +1363,7 @@ hr { border-color: var(--line); }
 }
 @media (max-width: 1100px) {
   .band-in { padding: 32px 26px 30px; }
-  .band h2 { font-size: 25px; }
+  .band h2 { font-size: 27px; }
 }
 @media (max-width: 640px) {
   .band-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1342,7 +1374,7 @@ hr { border-color: var(--line); }
   .nav-links, .nav-rule { display: none; }
   .hero { padding: 34px 0 8px; }
   .hero h1 { letter-spacing: -1.4px; }
-  .hero p { font-size: 17px; }
+  .hero p { font-size: 18px; }
   .notes { padding: 40px 0 12px; gap: 16px; }
   .tiles { gap: 10px; }
   .find-box { margin-left: 0; flex-basis: 100%; }
@@ -1352,8 +1384,8 @@ hr { border-color: var(--line); }
      narrow enough that the status chip stays on the same row, which halves the
      height of a header that is sticky. */
   .nav-sub { display: none; }
-  .status { font-size: 12.5px; padding: 7px 12px; }
-  .nav-brand { font-size: 16px; }
+  .status { font-size: 13.5px; padding: 7px 12px; }
+  .nav-brand { font-size: 17px; }
   .band-grid { gap: 12px; }
 }
 
@@ -1479,6 +1511,24 @@ def clear_study() -> None:
                   "cache_key": None, "cam": None, "cam_key": None, "error": ""})
 
 
+class _StaticUpload:
+    """Wraps bytes already on disk so a bundled sample can go through the same
+    ingest() path as a real upload - same size check, same dedup, same error
+    handling - instead of a second copy of that logic."""
+
+    def __init__(self, data: bytes, name: str) -> None:
+        self._data = data
+        self.name = name
+
+    def getvalue(self) -> bytes:
+        return self._data
+
+
+@st.cache_data(show_spinner=False)
+def _sample_thumb_b64(path: Path) -> str:
+    return base64.b64encode(path.read_bytes()).decode()
+
+
 # --------------------------------------------------------------------------- #
 # Empty state - the upload *is* the page
 # --------------------------------------------------------------------------- #
@@ -1544,11 +1594,37 @@ if state["image"] is None:
                 f'confidence {CACHE_CONF:g}<span class="ready">{CHECK_SVG}'
                 f'model loaded</span></div>', unsafe_allow_html=True)
 
-    if ingest(upload) and state["image"] is not None:
-        st.rerun()
-    if state["error"]:
-        st.markdown(f'<div class="notice alert" style="margin-top:18px;">'
-                    f'{state["error"]}</div>', unsafe_allow_html=True)
+        if ingest(upload) and state["image"] is not None:
+            st.rerun()
+        if state["error"]:
+            st.markdown(f'<div class="notice alert" style="margin-top:18px;">'
+                        f'{state["error"]}</div>', unsafe_allow_html=True)
+
+        available_samples = [s for s in SAMPLE_STUDIES
+                             if (SAMPLES_DIR / s["file"]).exists()]
+        if available_samples:
+            st.markdown('<div class="sample-row r r5">'
+                        '<div class="sample-lbl">or try a bundled sample</div></div>',
+                        unsafe_allow_html=True)
+            with st.container(key="samples"):
+                sample_cols = st.columns(len(available_samples))
+                for col, sample in zip(sample_cols, available_samples):
+                    with col:
+                        thumb_path = SAMPLES_DIR / sample["thumb"]
+                        b64 = _sample_thumb_b64(thumb_path)
+                        st.markdown(
+                            f'<div class="sample-thumb"><img src="data:image/jpeg;base64,{b64}" '
+                            f'alt="{sample["source"]} sample radiograph">'
+                            f'<div class="sample-cap">{sample["label"]}</div></div>',
+                            unsafe_allow_html=True)
+                        if st.button("Load", key=f"sample_{sample['slug']}",
+                                     use_container_width=True,
+                                     help=f"{sample['source']} radiograph from the training "
+                                          f"dataset, for trying the viewer"):
+                            data = (SAMPLES_DIR / sample["file"]).read_bytes()
+                            name = f"sample_{sample['slug']}.jpg"
+                            if ingest(_StaticUpload(data, name)):
+                                st.rerun()
 
     st.markdown(evidence_band(), unsafe_allow_html=True)
 
