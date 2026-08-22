@@ -251,29 +251,49 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-One centred column, no rail, no panels inside panels: the radiograph *is* the
-page and everything else is a quiet line of controls around it.
+Two screens on an indigo ground. The landing page states the claim on the left
+and takes the study on the right, then puts the per-class recall table directly
+underneath it — the honesty is the first thing on the page, not a footnote. Once
+a study is loaded the layout splits: the radiograph and the two controls that
+govern it on the left, an evidence rail of findings on the right.
 
-**The image is the hero.** Scroll to zoom at the cursor, drag to pan,
-double-click to fit, `1:1` for actual pixels. The frame sizes itself to the
-study's aspect ratio rather than to a fixed number. The floating toolbar fades
-in on hover and stays out of the way otherwise; its `Overlay` slider crossfades
-between annotated and original, and `Compare` blanks the overlay while held —
-the fastest way to check a box sits on a real feature. A 30-pixel carious lesion
-on a 1935-pixel panoramic is unreadable at fit-to-width, so this is not
-decoration.
+**Boxes are SVG, not pixels.** The overlay is drawn as vector elements *over*
+the image rather than burned into it, which buys three things a rasterised
+overlay cannot: strokes stay razor sharp at 12× zoom; outlines and markers
+counter-scale, so a box is 2 screen pixels whether you are looking at the whole
+jaw or one molar; and every box is a live element — it draws itself in on load,
+dims when a sibling is hovered, and carries a tooltip with the class, the
+confidence and that class's measured recall. Click a marker and the view flies
+to it. (`draw_overlay()` still rasterises for the PNG export, where the
+annotations have to live inside the pixels.)
 
-**Progressive disclosure.** Condition filters are pills under the title; the
-confidence threshold is a single slider directly beneath the image, where the
-effect of moving it is visible without looking anywhere else. Everything
-else — box labels, interior wash, overlay strength, NMS IoU, inference size —
-lives behind `Settings`. Export lives behind `Export`. Saliency is a toggle that
-swaps the viewport contents in place rather than a second tab.
+**Progressive disclosure.** Directly under the radiograph: the confidence
+threshold, which prints its own value at a size you can read across a room and
+says how many findings it is hiding. Under that, the condition pills, each
+carrying its class's hue and a count that moves with the threshold. Everything
+else — labels, interior wash, overlay strength, NMS IoU, inference size — lives
+behind `Settings`; downloads behind `Export`. Saliency is a toggle that swaps
+the viewport contents in place rather than a second tab.
+
+**The rail is the evidence.** Four tiles — findings, conditions, mean
+confidence, and how many of those findings sit on a class the data cannot
+measure — then one card per finding: the class, its confidence as a number and
+as a bar, and the recall badge. The count of weakly-measured findings turns
+amber when it is not zero, which is the one number on the page that is a warning
+rather than a result.
 
 **One forward pass.** Inference runs once per image at confidence 0.01. The
-threshold slider and the condition pills filter that cached result, so they
-respond instantly and every displayed number comes from a single pass. Changing
-NMS IoU or inference size does re-run the model, and the UI says which is which.
+threshold and the pills filter that cached result, so they respond instantly and
+every displayed number comes from a single pass. Changing NMS IoU or inference
+size does re-run the model — a shimmering skeleton holds the viewport's place
+while it does.
+
+**Motion.** All of it is CSS: Streamlit strips `<script>` from `st.markdown`, so
+the page's animation is keyframes, transitions and staggered `animation-delay`.
+That also means it degrades to a static, readable page if anything fails, and
+collapses to nothing under `prefers-reduced-motion`. Inside the viewport
+component, where real JS is available, the boxes animate their stroke in and the
+zoom eases.
 
 **`Healthy` is grey and off by default.** It is a background label, not a
 finding, and 58% of all boxes in the training data; drawn like pathology it
@@ -287,19 +307,27 @@ same way it presents an impacted tooth.
 
 **Export.** Annotated PNG at full resolution, findings CSV, and a JSON record
 that names the weights and the image by SHA-256 and carries every threshold in
-force — so a finding can be traced back to exactly what produced it.
+force — so a finding can be traced back to exactly what produced it. The
+checkpoint hash lives there and in the status chip's tooltip; it is provenance,
+not a headline.
 
 The app looks for `runs/detect/Yolo_10s_train/weights/best.pt`. Without it, it
 loads the base COCO model and says so in a red banner — those detections are
 meaningless for dental use.
 
-Box colours are the five-hue pathology palette in `constants.py`, chosen by
-search inside the OKLCH lightness band for a dark surface and verified against a
-six-check palette validator (lightness band, chroma floor, all-pairs
+Type is Inter throughout — headings at weight 500 rather than a display face,
+so the radiograph stays the loudest thing on screen — with IBM Plex Mono for
+figures. The chrome is the Nocturne palette: an indigo ground, a blurple accent,
+and elevation carried by a hairline instead of a glow. Secondary text sits one
+step brighter than the design system specifies, because its neutral-600 measures
+3.4:1 against the card surface and fails AA at body size; neutral-500 measures
+5.1:1. Box colours are the five-hue pathology palette in `constants.py`,
+chosen by search inside the OKLCH lightness band for a dark surface and verified
+against a six-check palette validator (lightness band, chroma floor, all-pairs
 colour-vision-deficient separation, all-pairs normal-vision separation, contrast
 against the surface). Class identity is never carried by colour alone: every box
-is labelled, labels stack across rows with leader lines rather than overwriting
-each other, and every findings row names the class in text.
+has a numbered marker, hovering names the class, and every findings row names it
+in text.
 
 ---
 

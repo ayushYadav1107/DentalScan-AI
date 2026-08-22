@@ -2,9 +2,10 @@
 # For the research harness (metrics, ablations, figures, report) install
 # requirements-research.txt instead.
 #
-# streamlit >= 1.40 is a hard floor: the condition filter uses st.pills,
-# which does not exist before it.
-streamlit>=1.40
+# streamlit >= 1.42 is a hard floor: the condition filter uses st.pills (1.40)
+# and the layout styles two containers through the st-key-<key> class that
+# st.container(key=...) emits (1.42).
+streamlit>=1.42
 ultralytics>=8.2
 Pillow>=10.0
 numpy>=1.26
