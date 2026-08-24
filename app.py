@@ -10,6 +10,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from string import Template
 
 try:
     import cv2
@@ -891,52 +892,101 @@ def findings_json(detections: list[dict], meta: dict) -> bytes:
 # which also means it degrades to a static, readable page if anything fails, and
 # collapses to nothing under prefers-reduced-motion.
 
-BASE_CSS = """
+# Light/dark is a real theme switch: every surface and ink tint below comes
+# from THEME_TOKENS[state["theme"]], and BASE_CSS is rebuilt from a
+# string.Template each run rather than written as literals. A few surfaces stay
+# constant on purpose in both themes - the X-ray viewport (VIEWPORT_TEMPLATE,
+# further up), the upload stage (--bg-deep) and the six-class evidence band
+# (--section): they are the app's "dark stage" surfaces, the same way a
+# radiology viewer keeps a dark surround regardless of the OS theme, and
+# recolouring the band would also mean re-validating its glow/shadow tuning
+# against a new background. Everything else - nav, hero, cards, findings,
+# popovers, buttons - adapts.
+THEME_TOKENS = {
+    "dark": {
+        "bg": "#161826", "surface": "#232532", "surface2": "#1C1E2B",
+        "ink": "#F3F5FE", "ink2": "#B2B6CA", "ink3": "#9397AB", "ink4": "#75798C", "ink5": "#595D6C",
+        "accent": "#9184D9", "accent300": "#D2CEFD", "accent400": "#B5ABFC",
+        "accent700": "#5D5294", "accent900": "#2B2741",
+        "ok_ink": "#7FD7AC", "warn_ink": "#E0B968", "alert_ink": "#F0968E",
+        "shadow": "0 2px 6px rgba(0,0,0,.35), 0 20px 50px -26px rgba(0,0,0,.85)",
+        "shadow_lg": "0 4px 12px rgba(0,0,0,.4), 0 36px 80px -34px rgba(0,0,0,.95)",
+        "scroll_thumb": "#33364A", "scroll_thumb_hover": "#454962",
+        "nav_bg": "rgba(22,24,38,.74)", "popover_bg": "rgba(28,30,43,.96)",
+        "skel_mid": "#33364A",
+        "color_scheme": "dark",
+    },
+    "light": {
+        "bg": "#F5F4FB", "surface": "#FFFFFF", "surface2": "#FBFAFF",
+        "ink": "#16171F", "ink2": "#4B4F63", "ink3": "#6B6F82", "ink4": "#8B8FA0", "ink5": "#A8ABBA",
+        "accent": "#6C5DD3", "accent300": "#4B3FA8", "accent400": "#5A4CC0",
+        "accent700": "#B7ACEE", "accent900": "#ECE9FB",
+        "ok_ink": "#0F7A52", "warn_ink": "#92600B", "alert_ink": "#B23A32",
+        "shadow": "0 2px 6px rgba(22,23,31,.06), 0 20px 44px -26px rgba(22,23,31,.16)",
+        "shadow_lg": "0 4px 12px rgba(22,23,31,.07), 0 32px 70px -34px rgba(22,23,31,.2)",
+        "scroll_thumb": "#D7D5E8", "scroll_thumb_hover": "#BFBCD9",
+        "nav_bg": "rgba(255,255,255,.74)", "popover_bg": "rgba(255,255,255,.97)",
+        "skel_mid": "#E7E4F4",
+        "color_scheme": "light",
+    },
+}
+
+if "theme" not in st.session_state:
+    st.session_state["theme"] = "dark"
+THEME_NAME = st.session_state["theme"]
+THEME = THEME_TOKENS[THEME_NAME]
+
+BASE_CSS_TEMPLATE = Template("""
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* Ground and surfaces. */
-  --bg:        #161826;
+  color-scheme: $color_scheme;
+  /* Ground and surfaces. --bg-deep, --section and --section-ghost stay
+     constant across themes - see the note above BASE_CSS_TEMPLATE. */
+  --bg:        $bg;
   --bg-deep:   #0F1018;   /* under the radiograph, so the image is the brightest thing */
-  --surface:   #232532;
-  --surface-2: #1C1E2B;
+  --surface:   $surface;
+  --surface-2: $surface2;
 
   /* Ink. The design system's neutral ramp, but secondary text is pulled one
      step brighter than the source: neutral-600 on --surface measures 3.4:1,
      which fails AA at body size. neutral-500 measures 5.1:1. neutral-600 is
      kept only for incidental metadata, set large or set in mono. */
-  --ink:   #F3F5FE;
-  --ink-2: #B2B6CA;
-  --ink-3: #9397AB;
-  --ink-4: #75798C;
-  --ink-5: #595D6C;
+  --ink:   $ink;
+  --ink-2: $ink2;
+  --ink-3: $ink3;
+  --ink-4: $ink4;
+  --ink-5: $ink5;
 
   --line:   color-mix(in srgb, var(--ink) 9%,  transparent);
   --line-2: color-mix(in srgb, var(--ink) 20%, transparent);
 
   /* Accent: the blurple, with the ramp steps the design leans on. */
-  --accent:       #9184D9;
-  --accent-300:   #D2CEFD;
-  --accent-400:   #B5ABFC;
-  --accent-700:   #5D5294;
-  --accent-900:   #2B2741;
+  --accent:       $accent;
+  --accent-300:   $accent300;
+  --accent-400:   $accent400;
+  --accent-700:   $accent700;
+  --accent-900:   $accent900;
   --accent-2-400: #B5AFE8;
 
-  /* Section ground - saturated deep indigo, band-scale fills only. */
+  /* Section ground - saturated deep indigo, band-scale fills only, constant
+     across themes: a deliberate dark "spotlight" panel, not a page surface. */
   --section:       #262A60;
   --section-ghost: #4C5397;
 
-  /* Status. */
-  --ok:    #4FBF8B;  --ok-ink:    #7FD7AC;
-  --warn:  #D4A03A;  --warn-ink:  #E0B968;
-  --alert: #E0685F;  --alert-ink: #F0968E;
+  /* Status. The saturated dot/bar hue stays constant; only the *-ink text
+     tint (used on translucent washes outside the dark band) adapts, since a
+     pastel tuned for a dark surface reads as barely-there on white. */
+  --ok:    #4FBF8B;  --ok-ink:    $ok_ink;
+  --warn:  #D4A03A;  --warn-ink:  $warn_ink;
+  --alert: #E0685F;  --alert-ink: $alert_ink;
 
   --r:    20px;
   --r-lg: 16px;
   --r-md: 14px;
   --r-s:  9px;
-  --shadow:    0 2px 6px rgba(0,0,0,.35), 0 20px 50px -26px rgba(0,0,0,.85);
-  --shadow-lg: 0 4px 12px rgba(0,0,0,.4),  0 36px 80px -34px rgba(0,0,0,.95);
+  --shadow:    $shadow;
+  --shadow-lg: $shadow_lg;
   --ease: cubic-bezier(.22,1,.36,1);
 }
 
@@ -971,8 +1021,8 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 
 ::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #33364A; border-radius: 7px; border: 3px solid var(--bg); }
-::-webkit-scrollbar-thumb:hover { background: #454962; }
+::-webkit-scrollbar-thumb { background: $scroll_thumb; border-radius: 7px; border: 3px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: $scroll_thumb_hover; }
 *:focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px; border-radius: 6px; }
 ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 
@@ -999,10 +1049,14 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 /* -- nav ------------------------------------------------------------------
    Sticky, and bled out to the container's padding so the hairline runs the
    full width of the page rather than the width of the text column. */
+/* Right padding is wider than the left: the sticky theme toggle (further
+   down) is pinned at content-right minus 32px, floating above this row
+   rather than laid out inside it, so the status chip needs the extra room
+   reserved or the two overlap. */
 .nav { position: sticky; top: 0; z-index: 40;
        display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-       margin: 0 -32px 4px; padding: 15px 32px;
-       background: rgba(22,24,38,.74); backdrop-filter: blur(18px) saturate(1.4);
+       margin: 0 -32px 4px; padding: 15px 88px 15px 32px;
+       background: $nav_bg; backdrop-filter: blur(18px) saturate(1.4);
        border-bottom: 1px solid var(--line); }
 .nav-logo { width: 38px; height: 38px; border-radius: 11px; flex: none; display: grid;
             place-items: center; color: var(--accent-400);
@@ -1053,7 +1107,11 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 /* The frame around the drop target. The design put a worked example here; the
    real app has nothing to show until a study is uploaded, so the frame *is*
    the upload and the scan sweep runs over an empty stage. */
+/* --bg-deep is the same constant-dark stage as --section (see the note above
+   BASE_CSS_TEMPLATE) - re-pin the ink ramp here too, or .frame-foot's text
+   inherits the page-level (light-mode: near-black) ink onto this dark floor. */
 .st-key-dropframe { position: relative; border-radius: var(--r); overflow: hidden;
+  --ink: #F3F5FE; --ink-2: #B2B6CA; --ink-3: #9397AB; --ink-4: #75798C; --ink-5: #595D6C;
   background: var(--bg-deep); border: 1px solid var(--line);
   box-shadow: 0 40px 90px -40px rgba(0,0,0,.9),
               0 0 0 1px color-mix(in srgb, var(--accent) 7%, transparent);
@@ -1092,11 +1150,19 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 .sample-cap { padding: 7px 4px 8px; font-size: 12.5px; color: var(--ink-3); text-align: center;
               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st-key-samples .stButton { margin-top: 6px; }
-.st-key-samples .stButton > button {
+.st-key-samples .stButton button {
   font-size: 13px !important; padding: 7px 8px !important; width: 100%; }
 
 /* -- evidence band --------------------------------------------------------- */
+/* --section stays a constant dark indigo across themes (see the note above
+   BASE_CSS_TEMPLATE), but --ink/--ink-2/--ink-3/--ink-4 do not - in light
+   mode they turn near-black, which is illegible on this panel's dark fill.
+   Re-pinning the ink ramp to its dark-theme values here, scoped to .band,
+   fixes every descendant that reads var(--ink*): --line and --line-2 also
+   recompute correctly, since their color-mix() reads var(--ink) at the point
+   of use, not at :root. */
 .band { position: relative; overflow: hidden; border-radius: 24px; margin-top: 34px;
+        --ink: #F3F5FE; --ink-2: #B2B6CA; --ink-3: #9397AB; --ink-4: #75798C; --ink-5: #595D6C;
         background: linear-gradient(150deg, var(--section) 0%, var(--section) 55%, var(--bg) 100%);
         border: 1px solid color-mix(in srgb, var(--section-ghost) 50%, transparent); }
 .band::before { content: ''; position: absolute; top: -140px; right: -80px;
@@ -1123,7 +1189,7 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 .cls-n { font-size: 16px; font-weight: 500; color: var(--ink); }
 .cls-v { display: flex; align-items: baseline; gap: 6px; margin-top: 12px; }
 .cls-v b { font-size: 38px; font-weight: 500; letter-spacing: -1.4px; line-height: 1;
-           font-variant-numeric: tabular-nums; }
+           font-variant-numeric: tabular-nums; color: var(--ink); }
 .cls-v span { font-size: 15px; color: var(--ink-3); }
 .cls-note { margin-top: 14px; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
 .cls.low .cls-v b { color: var(--ink-4); }
@@ -1245,7 +1311,7 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 
 /* -- skeleton -------------------------------------------------------------- */
 .skel { border-radius: var(--r); border: 1px solid var(--line); overflow: hidden;
-        background: linear-gradient(100deg, var(--surface) 30%, #33364A 50%, var(--surface) 70%);
+        background: linear-gradient(100deg, var(--surface) 30%, $skel_mid 50%, var(--surface) 70%);
         background-size: 220% 100%; animation: shimmer 1.4s linear infinite; }
 .skel-note { display: flex; align-items: center; gap: 13px; font-size: 16px;
              color: var(--ink-2); margin-top: 18px; }
@@ -1291,19 +1357,23 @@ footer, #MainMenu, [data-testid="stSidebar"] { display: none !important; }
 [data-testid="stFileUploaderFile"] { background: color-mix(in srgb, var(--ink) 5%, transparent);
                                      border-radius: 10px; font-size: 15.5px; }
 
-/* Buttons are outlined, not filled - Nocturne carries emphasis with an edge. */
-.stButton > button, .stDownloadButton > button, [data-testid="stPopover"] button {
-  background: transparent; color: var(--ink-2); border: 1px solid var(--line-2);
+/* Buttons are outlined, not filled - Nocturne carries emphasis with an edge.
+   Descendant selectors, not direct-child: the actual <button> sits several
+   levels below .stButton (a tooltip wrapper span in between when the widget
+   has help text), so a ">" combinator here silently matches nothing and the
+   button falls through to Streamlit's own base-theme default instead. */
+.stButton button, .stDownloadButton button, [data-testid="stPopover"] button {
+  background: transparent !important; color: var(--ink-2) !important; border: 1px solid var(--line-2) !important;
   border-radius: var(--r-s); font-size: 15.5px; font-weight: 450; padding: 10px 18px;
   transition: background .2s ease, border-color .2s ease, color .2s ease, transform .2s var(--ease); }
-.stButton > button:hover, .stDownloadButton > button:hover, [data-testid="stPopover"] button:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-  border-color: color-mix(in srgb, var(--ink) 34%, transparent); color: var(--ink); }
-.stButton > button:active, .stDownloadButton > button:active { transform: scale(.97); }
-.stDownloadButton > button { color: var(--accent-300); border-color: var(--accent-700); }
-.stDownloadButton > button:hover { background: color-mix(in srgb, var(--accent) 12%, transparent) !important;
+.stButton button:hover, .stDownloadButton button:hover, [data-testid="stPopover"] button:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent) !important;
+  border-color: color-mix(in srgb, var(--ink) 34%, transparent) !important; color: var(--ink) !important; }
+.stButton button:active, .stDownloadButton button:active { transform: scale(.97); }
+.stDownloadButton button { color: var(--accent-300) !important; border-color: var(--accent-700) !important; }
+.stDownloadButton button:hover { background: color-mix(in srgb, var(--accent) 12%, transparent) !important;
                                    border-color: var(--accent) !important; color: var(--accent-300) !important; }
-[data-testid="stPopoverBody"] { background: rgba(28,30,43,.96); border: 1px solid var(--line-2);
+[data-testid="stPopoverBody"] { background: $popover_bg; border: 1px solid var(--line-2);
                                 border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
                                 backdrop-filter: blur(28px) saturate(1.5); padding: 10px 6px; }
 
@@ -1339,12 +1409,49 @@ button[aria-pressed]:hover { transform: translateY(-2px); color: var(--ink) !imp
   font-size: 15.5px !important; color: var(--ink-2) !important; font-weight: 450 !important; }
 [data-testid="stCheckbox"] label span, [data-testid="stToggle"] label span { font-size: 15.5px; }
 
+/* The checkbox square and toggle pill are drawn by react-aria, coloured from
+   Streamlit's OWN base theme (config.toml is pinned dark so sliders/focus
+   rings don't default to red) rather than anything above - invisible in dark
+   mode because it happens to already be dark, but a flat black square in
+   light mode. The track is the one plain <div> inside the label that carries
+   no data-testid of its own (a thumb <div>, or a checkmark <svg>, nests
+   inside it); targeting it structurally survives Streamlit CSS-in-JS class
+   hashes changing across versions, where a literal class name would not. */
+[data-testid="stCheckbox"] label > div:not([data-testid]),
+[data-testid="stToggle"] label > div:not([data-testid]) {
+  background: var(--line-2) !important; border: 1.5px solid var(--line-2) !important;
+  transition: background .2s ease, border-color .2s ease !important; }
+[data-testid="stCheckbox"] label:has(input:checked) > div:not([data-testid]),
+[data-testid="stToggle"] label:has(input:checked) > div:not([data-testid]) {
+  background: var(--accent) !important; border-color: var(--accent) !important; }
+[data-testid="stCheckbox"] label > div:not([data-testid]) > div,
+[data-testid="stToggle"] label > div:not([data-testid]) > div {
+  background: var(--surface) !important; }
+[data-testid="stCheckbox"] label > div:not([data-testid]) svg {
+  stroke: var(--surface) !important; }
+
+/* Streamlit's own base theme (config.toml, pinned dark so sliders/checkboxes
+   don't default to red) supplies a background on the expander header from
+   its OWN theme tokens on some versions, independent of our CSS - harmless
+   when our page is dark too, but it leaves a stray near-black bar behind the
+   header in light mode if we only style the outer shell. Forcing the header
+   background explicitly, with !important and both the current and a couple
+   of prior testids, closes that gap regardless of which one this Streamlit
+   build actually renders. */
 [data-testid="stExpander"] { border: 1px solid var(--line); border-radius: var(--r-md);
-  background: var(--surface); transition: border-color .3s ease; }
+  background: var(--surface) !important; overflow: hidden; transition: border-color .3s ease; }
 [data-testid="stExpander"]:hover { border-color: var(--line-2); }
-[data-testid="stExpander"] summary { font-size: 16px; color: var(--ink-2); padding: 8px 4px;
-                                     font-weight: 500; }
-[data-testid="stExpander"] summary:hover { color: var(--ink); }
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] [data-testid="stExpanderHeader"],
+[data-testid="stExpander"] > details > summary,
+.streamlit-expanderHeader {
+  background: var(--surface) !important; color: var(--ink-2) !important;
+  font-size: 16px; padding: 8px 4px; font-weight: 500; }
+[data-testid="stExpander"] summary:hover,
+[data-testid="stExpander"] [data-testid="stExpanderHeader"]:hover { color: var(--ink) !important; }
+[data-testid="stExpander"] summary svg, [data-testid="stExpander"] [data-testid="stExpanderHeader"] svg,
+[data-testid="stExpanderToggleIcon"] { fill: var(--ink-2) !important; color: var(--ink-2) !important; }
+[data-testid="stExpanderDetails"] { background: var(--surface) !important; }
 [data-testid="stExpanderDetails"] p, [data-testid="stExpanderDetails"] li,
 [data-testid="stExpanderDetails"] td, [data-testid="stExpanderDetails"] th {
   font-size: 16px; line-height: 1.78; color: var(--ink-2); }
@@ -1370,7 +1477,7 @@ hr { border-color: var(--line); }
 }
 @media (max-width: 860px) {
   .block-container { padding: 0 16px 80px !important; }
-  .nav { margin: 0 -16px 4px; padding: 13px 16px; gap: 12px; }
+  .nav { margin: 0 -16px 4px; padding: 13px 72px 13px 16px; gap: 12px; }
   .nav-links, .nav-rule { display: none; }
   .hero { padding: 34px 0 8px; }
   .hero h1 { letter-spacing: -1.4px; }
@@ -1395,7 +1502,41 @@ hr { border-color: var(--line); }
     transition-duration: .01ms !important; }
   .r, .tile, .find { opacity: 1 !important; }
 }
-"""
+
+/* Theme toggle. Not laid out inside .nav's own flex row - .nav is one markdown
+   blob, so a real st.button can only arrive as a separate Streamlit element -
+   and not "position: fixed", whose containing block Streamlit silently
+   redirects to something far narrower than the viewport on this page (the
+   hidden sidebar's flex track, at a guess), which parked a fixed button off
+   the left edge entirely when this was tried. Sticky with zero height doesn't
+   consume layout, degenerates to none of the containing block confusion,
+   and (matching the .st-key-thresh trick above) flattening the element
+   wrapper's own position:relative hands the containing block to this element,
+   where the offsets below are actually meant to apply. */
+.st-key-theme_toggle { position: sticky; top: 0; z-index: 999; height: 0; overflow: visible; }
+.st-key-theme_toggle [data-testid="stElementContainer"] { position: static; }
+/* This wrapper sits inside .block-container's own content box, not bled past
+   its padding the way .nav is - so "right: 0" already lands at the same edge
+   nav's own unbled content would use, which is what the padding-right above
+   reserves room against. */
+.st-key-theme_toggle button {
+  /* Streamlit inserts its standard inter-block gap (~16px) between this
+     sticky wrapper and .nav below it, so "top" here is measured from the
+     wrapper's own origin, not from .nav's. 30px centers the 44px circle on
+     the ~72px-tall desktop nav bar (16px gap + (72-44)/2); the mobile
+     override below does the same against the shorter mobile nav. Without
+     this offset the circle sat too high and visibly poked out above the
+     nav bar's top edge instead of sitting inside it. */
+  position: absolute; top: 30px; right: 0;
+  width: 44px !important; height: 44px !important; padding: 0 !important;
+  border-radius: 50% !important; font-size: 18px !important;
+  background: var(--surface) !important; border: 1px solid var(--line-2) !important;
+  box-shadow: var(--shadow) !important; }
+.st-key-theme_toggle button:hover { transform: translateY(-1px) scale(1.05); }
+@media (max-width: 860px) { .st-key-theme_toggle button { top: 26px; } }
+""")
+
+BASE_CSS = BASE_CSS_TEMPLATE.substitute(THEME)
 
 # Per-class pill hues, generated from the palette so it stays the one source of
 # truth. Streamlit has wrapped pill buttons differently across versions, so both
@@ -1407,6 +1548,12 @@ PILL_CSS = "\n".join(
 )
 
 st.markdown(f"<style>{BASE_CSS}\n{PILL_CSS}</style>", unsafe_allow_html=True)
+
+with st.container(key="theme_toggle"):
+    _icon, _target = ("☀️", "light mode") if THEME_NAME == "dark" else ("🌙", "dark mode")
+    if st.button(_icon, key="theme_toggle_btn", help=f"Switch to {_target}"):
+        st.session_state["theme"] = "light" if THEME_NAME == "dark" else "dark"
+        st.rerun()
 
 bundle = load_model()
 model = bundle["model"]
